@@ -1,0 +1,742 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Cut &amp; Stack Card Generator</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<style>
+  :root {
+    --paper: #f6f4ee;
+    --ink: #201d18;
+    --ink-soft: #59544a;
+    --line: #d8d2c2;
+    --blade: #2f6f57;
+    --blade-dark: #204f3d;
+    --card-bg: #ffffff;
+    --error: #b3432b;
+    box-sizing: border-box;
+    padding-top: env(safe-area-inset-top, 0px);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  * { box-sizing: inherit; }
+  html { scroll-padding-top: env(safe-area-inset-top, 0px); }
+
+  body {
+    margin: 0;
+    min-height: 100%;
+    background:
+      linear-gradient(var(--paper), var(--paper)) padding-box,
+      repeating-linear-gradient(0deg, transparent, transparent 27px, rgba(47,111,87,0.06) 27px, rgba(47,111,87,0.06) 28px),
+      repeating-linear-gradient(90deg, transparent, transparent 27px, rgba(47,111,87,0.06) 27px, rgba(47,111,87,0.06) 28px);
+    color: var(--ink);
+    font-family: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+    line-height: 1.5;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --paper: #1c1b17;
+      --ink: #ece7dc;
+      --ink-soft: #ada694;
+      --line: #3a3730;
+      --blade: #5fae8f;
+      --blade-dark: #8fd4b6;
+      --card-bg: #26241e;
+    }
+  }
+  :root[data-theme="dark"] {
+    --paper: #1c1b17;
+    --ink: #ece7dc;
+    --ink-soft: #ada694;
+    --line: #3a3730;
+    --blade: #5fae8f;
+    --blade-dark: #8fd4b6;
+    --card-bg: #26241e;
+  }
+
+  .wrap {
+    max-width: 880px;
+    margin: 0 auto;
+    padding: 48px 24px 96px;
+  }
+
+  header h1 {
+    font-size: clamp(28px, 5vw, 40px);
+    margin: 0 0 6px;
+    letter-spacing: 0.2px;
+    font-weight: 600;
+  }
+  header p {
+    color: var(--ink-soft);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    max-width: 62ch;
+    margin: 0 0 8px;
+  }
+  .scissor {
+    display: inline-block;
+    transform: translateY(1px);
+  }
+
+  main {
+    margin-top: 36px;
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 28px;
+  }
+  @media (min-width: 760px) {
+    main { grid-template-columns: 380px 1fr; align-items: start; }
+  }
+
+  .panel {
+    background: var(--card-bg);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 22px;
+  }
+
+  fieldset {
+    border: none;
+    padding: 0;
+    margin: 0 0 22px;
+  }
+  fieldset:last-of-type { margin-bottom: 0; }
+  legend {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    font-size: 12px;
+    letter-spacing: 0.04em;
+    color: var(--blade-dark);
+    padding: 0 0 10px;
+    font-weight: 600;
+  }
+
+  label {
+    display: block;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    font-size: 13.5px;
+    color: var(--ink);
+    margin-bottom: 4px;
+  }
+  .field { margin-bottom: 14px; }
+  .field-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+  }
+  .hint {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    font-size: 12px;
+    color: var(--ink-soft);
+    margin-top: 4px;
+  }
+
+  input[type="number"],
+  input[type="text"],
+  select,
+  textarea {
+    width: 100%;
+    padding: 9px 10px;
+    background: transparent;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    color: var(--ink);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    font-size: 14px;
+  }
+  textarea {
+    min-height: 140px;
+    resize: vertical;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 12.5px;
+    line-height: 1.5;
+  }
+  input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-visible, .radio-card:focus-within {
+    outline: 2px solid var(--blade);
+    outline-offset: 2px;
+  }
+
+  .radio-group { display: grid; gap: 8px; }
+  .radio-card {
+    display: flex;
+    gap: 10px;
+    align-items: flex-start;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 10px 12px;
+    cursor: pointer;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  }
+  .radio-card input { margin-top: 3px; }
+  .radio-card .t { font-size: 13.5px; font-weight: 600; }
+  .radio-card .d { font-size: 12.5px; color: var(--ink-soft); margin-top: 1px; }
+  .radio-card:has(input:checked) {
+    border-color: var(--blade);
+    background: color-mix(in srgb, var(--blade) 8%, transparent);
+  }
+
+  #backEdgeField { margin-top: 10px; display: none; }
+
+  button#generate {
+    width: 100%;
+    padding: 13px 16px;
+    background: var(--blade);
+    color: #fff;
+    border: none;
+    border-radius: 7px;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    font-size: 15px;
+    font-weight: 600;
+    cursor: pointer;
+    margin-top: 6px;
+  }
+  button#generate:hover { background: var(--blade-dark); }
+  button#generate:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  .status {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    font-size: 13px;
+    margin-top: 10px;
+    min-height: 18px;
+  }
+  .status.error { color: var(--error); }
+  .status.ok { color: var(--blade-dark); }
+
+  .summary {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    font-size: 13px;
+    color: var(--ink-soft);
+    border-top: 1px dashed var(--line);
+    margin-top: 16px;
+    padding-top: 14px;
+  }
+  .summary b { color: var(--ink); }
+
+  .preview h2 {
+    font-size: 15px;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    margin: 0 0 4px;
+  }
+  .preview p.sub {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    font-size: 12.5px;
+    color: var(--ink-soft);
+    margin: 0 0 14px;
+  }
+  .sheets {
+    display: grid;
+    gap: 18px;
+  }
+  .sheet-label {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    font-size: 11.5px;
+    letter-spacing: 0.03em;
+    color: var(--ink-soft);
+    margin-bottom: 6px;
+  }
+  .grid {
+    display: grid;
+    gap: 6px;
+    background: var(--line);
+    padding: 6px;
+    border-radius: 8px;
+    overflow-x: auto;
+  }
+  .cell {
+    background: var(--card-bg);
+    border: 1px dashed var(--line);
+    border-radius: 4px;
+    min-height: 64px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 4px;
+    text-align: center;
+  }
+  .cell .num {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-weight: 700;
+    font-size: 16px;
+  }
+  .cell .word {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    font-size: 10.5px;
+    color: var(--ink-soft);
+    margin-top: 2px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 100%;
+  }
+  .cell.empty { border-style: solid; opacity: 0.35; }
+
+  footer {
+    margin-top: 40px;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    font-size: 12px;
+    color: var(--ink-soft);
+    border-top: 1px solid var(--line);
+    padding-top: 16px;
+  }
+  footer code {
+    background: color-mix(in srgb, var(--blade) 10%, transparent);
+    padding: 1px 5px;
+    border-radius: 4px;
+    font-size: 11.5px;
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <h1>Cut <span class="scissor">✂</span> Stack Card Generator</h1>
+    <p>Build a numbered set of rectangles to print, cut apart, and stack back into order. Enter how many items you need and how many fit per sheet — the layout is arranged so that cutting straight through a stacked, page-ordered print run hands you every group already sorted.</p>
+  </header>
+
+  <main>
+    <form class="panel" id="form">
+
+      <fieldset>
+        <legend>Layout</legend>
+        <div class="field">
+          <label for="totalItems">Total items</label>
+          <input type="number" id="totalItems" min="1" value="32" required />
+        </div>
+        <div class="field">
+          <label for="rectsPerPage">Rectangles per page</label>
+          <input type="number" id="rectsPerPage" min="1" value="8" required />
+        </div>
+        <div class="field field-row">
+          <div>
+            <label for="gridCols">Columns</label>
+            <input type="number" id="gridCols" min="1" value="2" required />
+          </div>
+          <div>
+            <label for="gridRows">Rows</label>
+            <input type="number" id="gridRows" min="1" value="4" required />
+          </div>
+        </div>
+        <p class="hint" id="gridHint">Columns × rows must equal rectangles per page.</p>
+        <div class="field" style="margin-top:14px;">
+          <label for="pageSize">Page size</label>
+          <select id="pageSize">
+            <option value="letter">Letter (8.5 × 11 in)</option>
+            <option value="a4">A4</option>
+          </select>
+        </div>
+      </fieldset>
+
+      <fieldset>
+        <legend>Words (optional)</legend>
+        <div class="field">
+          <label for="wordsText">One word or phrase per line, in item-number order (line 1 = item 1, etc). Leave blank for numbers only.</label>
+          <textarea id="wordsText" placeholder="apple&#10;banana&#10;cherry&#10;..."></textarea>
+        </div>
+
+        <div class="radio-group" role="radiogroup" aria-label="Word placement">
+          <label class="radio-card">
+            <input type="radio" name="placement" value="numbers_only" checked />
+            <span>
+              <span class="t">Numbers only</span>
+              <span class="d">Ignore the word list, just number every rectangle.</span>
+            </span>
+          </label>
+          <label class="radio-card">
+            <input type="radio" name="placement" value="same_card" />
+            <span>
+              <span class="t">Word next to the number</span>
+              <span class="d">Each rectangle shows its number and its word together.</span>
+            </span>
+          </label>
+          <label class="radio-card">
+            <input type="radio" name="placement" value="back" />
+            <span>
+              <span class="t">Word on the back</span>
+              <span class="d">Front pages show numbers only. A matching back page follows each front, with words mirrored so double-sided printing lines them up.</span>
+            </span>
+          </label>
+        </div>
+
+        <div class="field" id="backEdgeField">
+          <label for="backFlipEdge">Duplex flip edge</label>
+          <select id="backFlipEdge">
+            <option value="long">Long edge (most common default)</option>
+            <option value="short">Short edge</option>
+          </select>
+          <p class="hint">Match this to how your printer flips double-sided pages — check a test sheet if unsure.</p>
+        </div>
+      </fieldset>
+
+      <button type="submit" id="generate">Generate &amp; download PDF</button>
+      <p class="status" id="status" role="status"></p>
+
+      <div class="summary" id="summary"></div>
+    </form>
+
+    <section class="preview">
+      <h2>Preview</h2>
+      <p class="sub">Page 1 only — the full PDF repeats this pattern across every page.</p>
+      <div class="sheets" id="previewSheets"></div>
+    </section>
+  </main>
+
+  <footer>
+    Everything runs locally in the browser — no files are uploaded anywhere. Prefer working from a script instead? The same logic is available as <code>generate_cut_cards.py</code> alongside this page.
+  </footer>
+
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  const el = (id) => document.getElementById(id);
+  const totalItemsEl = el("totalItems");
+  const rectsPerPageEl = el("rectsPerPage");
+  const gridColsEl = el("gridCols");
+  const gridRowsEl = el("gridRows");
+  const pageSizeEl = el("pageSize");
+  const wordsTextEl = el("wordsText");
+  const backEdgeField = el("backEdgeField");
+  const backFlipEdgeEl = el("backFlipEdge");
+  const statusEl = el("status");
+  const summaryEl = el("summary");
+  const previewSheetsEl = el("previewSheets");
+  const gridHintEl = el("gridHint");
+  const form = el("form");
+  const generateBtn = el("generate");
+
+  function getPlacement() {
+    return document.querySelector('input[name="placement"]:checked').value;
+  }
+
+  function parseWords(totalItems) {
+    const raw = wordsTextEl.value;
+    const lines = raw.split("\n").map((l) => l.trim()).filter((l) => l !== "");
+    if (lines.length === 0) return null;
+    const words = lines.slice(0, totalItems);
+    while (words.length < totalItems) words.push("");
+    return words;
+  }
+
+  // Mirrors _mirror_slot() in generate_cut_cards.py
+  function mirrorSlot(row, col, gridRows, gridCols, edge) {
+    if (edge === "long") return [row, gridCols - 1 - col];
+    return [gridRows - 1 - row, col];
+  }
+
+  function readConfig() {
+    const totalItems = parseInt(totalItemsEl.value, 10);
+    const rectsPerPage = parseInt(rectsPerPageEl.value, 10);
+    const gridCols = parseInt(gridColsEl.value, 10);
+    const gridRows = parseInt(gridRowsEl.value, 10);
+    const placement = getPlacement();
+    const backFlipEdge = backFlipEdgeEl.value;
+    const pageSize = pageSizeEl.value;
+
+    const errors = [];
+    if (!totalItems || totalItems < 1) errors.push("Total items must be at least 1.");
+    if (!rectsPerPage || rectsPerPage < 1) errors.push("Rectangles per page must be at least 1.");
+    if (!gridCols || !gridRows || gridCols < 1 || gridRows < 1) errors.push("Columns and rows must be at least 1.");
+    if (gridCols * gridRows !== rectsPerPage) {
+      errors.push(`Columns (${gridCols}) × rows (${gridRows}) = ${gridCols * gridRows}, but rectangles per page is ${rectsPerPage}.`);
+    }
+
+    let words = null;
+    if (errors.length === 0) {
+      words = parseWords(totalItems);
+    }
+    let effectivePlacement = placement;
+    if (placement !== "numbers_only" && !words) {
+      effectivePlacement = "numbers_only";
+    }
+
+    const numPages = errors.length === 0 ? Math.ceil(totalItems / rectsPerPage) : 0;
+
+    return { totalItems, rectsPerPage, gridCols, gridRows, placement: effectivePlacement,
+             requestedPlacement: placement, backFlipEdge, pageSize, words, numPages, errors };
+  }
+
+  function itemNumberFor(slot, page, numPages) {
+    return (slot - 1) * numPages + page;
+  }
+
+  function buildPageGrid(page, cfg) {
+    // returns { cells: [{row,col,item}], } for the front of `page`
+    const cells = [];
+    let slot = 0;
+    for (let row = 0; row < cfg.gridRows; row++) {
+      for (let col = 0; col < cfg.gridCols; col++) {
+        slot++;
+        const item = itemNumberFor(slot, page, cfg.numPages);
+        cells.push({ row, col, slot, item: item <= cfg.totalItems ? item : null });
+      }
+    }
+    return cells;
+  }
+
+  function buildBackGrid(page, cfg) {
+    const cells = [];
+    let slot = 0;
+    for (let row = 0; row < cfg.gridRows; row++) {
+      for (let col = 0; col < cfg.gridCols; col++) {
+        slot++;
+        const item = itemNumberFor(slot, page, cfg.numPages);
+        if (item > cfg.totalItems) continue;
+        const [mrow, mcol] = mirrorSlot(row, col, cfg.gridRows, cfg.gridCols, cfg.backFlipEdge);
+        cells.push({ row: mrow, col: mcol, item });
+      }
+    }
+    return cells;
+  }
+
+  function renderPreview(cfg) {
+    previewSheetsEl.innerHTML = "";
+    if (cfg.errors.length > 0 || cfg.totalItems < 1) return;
+
+    function renderGrid(label, cellsByPos, showWord, wordOnly) {
+      const wrap = document.createElement("div");
+      const lbl = document.createElement("div");
+      lbl.className = "sheet-label";
+      lbl.textContent = label;
+      wrap.appendChild(lbl);
+
+      const grid = document.createElement("div");
+      grid.className = "grid";
+      grid.style.gridTemplateColumns = `repeat(${cfg.gridCols}, minmax(60px, 1fr))`;
+
+      for (let row = 0; row < cfg.gridRows; row++) {
+        for (let col = 0; col < cfg.gridCols; col++) {
+          const key = row + "," + col;
+          const data = cellsByPos.get(key);
+          const cell = document.createElement("div");
+          cell.className = "cell" + (data ? "" : " empty");
+          if (data) {
+            if (wordOnly) {
+              const w = document.createElement("span");
+              w.className = "word";
+              w.style.fontSize = "12px";
+              w.textContent = cfg.words ? (cfg.words[data.item - 1] || "") : "";
+              cell.appendChild(w);
+            } else {
+              const n = document.createElement("span");
+              n.className = "num";
+              n.textContent = data.item;
+              cell.appendChild(n);
+              if (showWord && cfg.words) {
+                const w = document.createElement("span");
+                w.className = "word";
+                w.textContent = cfg.words[data.item - 1] || "";
+                cell.appendChild(w);
+              }
+            }
+          }
+          grid.appendChild(cell);
+        }
+      }
+      wrap.appendChild(grid);
+      previewSheetsEl.appendChild(wrap);
+    }
+
+    const front = buildPageGrid(1, cfg);
+    const frontMap = new Map(front.map((c) => [c.row + "," + c.col, c]));
+    renderGrid("Page 1 — front", frontMap, cfg.placement === "same_card", false);
+
+    if (cfg.placement === "back") {
+      const back = buildBackGrid(1, cfg);
+      const backMap = new Map(back.map((c) => [c.row + "," + c.col, c]));
+      renderGrid("Page 1 — back (mirrored)", backMap, false, true);
+    }
+  }
+
+  function renderSummary(cfg) {
+    if (cfg.errors.length > 0) {
+      summaryEl.innerHTML = "";
+      return;
+    }
+    const sides = cfg.placement === "back" ? cfg.numPages * 2 : cfg.numPages;
+    let note = "";
+    if (cfg.requestedPlacement !== "numbers_only" && !cfg.words) {
+      note = " (no word list entered, so cards will just be numbered)";
+    }
+    summaryEl.innerHTML =
+      `<b>${cfg.numPages}</b> page${cfg.numPages === 1 ? "" : "s"} needed for <b>${cfg.totalItems}</b> items ` +
+      `at <b>${cfg.rectsPerPage}</b> per page (${cfg.gridCols}×${cfg.gridRows} grid). ` +
+      `PDF will contain <b>${sides}</b> printable page${sides === 1 ? "" : "s"}${cfg.placement === "back" ? " (fronts + backs)" : ""}.${note}`;
+  }
+
+  function updateUI() {
+    const cfg = readConfig();
+    backEdgeField.style.display = getPlacement() === "back" ? "block" : "none";
+
+    if (cfg.errors.length > 0) {
+      gridHintEl.textContent = cfg.errors.join(" ");
+      gridHintEl.style.color = "var(--error)";
+    } else {
+      gridHintEl.textContent = "Columns × rows must equal rectangles per page.";
+      gridHintEl.style.color = "";
+    }
+
+    renderSummary(cfg);
+    renderPreview(cfg);
+    return cfg;
+  }
+
+  // Suggest a sensible grid whenever rects-per-page changes to a value the
+  // current cols/rows no longer multiply to.
+  rectsPerPageEl.addEventListener("input", () => {
+    const n = parseInt(rectsPerPageEl.value, 10);
+    if (!n || n < 1) return;
+    if (parseInt(gridColsEl.value, 10) * parseInt(gridRowsEl.value, 10) === n) return;
+    let bestCols = 1;
+    for (let c = 1; c * c <= n; c++) {
+      if (n % c === 0) bestCols = c;
+    }
+    gridColsEl.value = n / bestCols;
+    gridRowsEl.value = bestCols;
+    updateUI();
+  });
+
+  [totalItemsEl, gridColsEl, gridRowsEl, pageSizeEl, wordsTextEl, backFlipEdgeEl].forEach((elm) =>
+    elm.addEventListener("input", updateUI)
+  );
+  document.querySelectorAll('input[name="placement"]').forEach((r) =>
+    r.addEventListener("change", updateUI)
+  );
+
+  function buildPdf(cfg) {
+    const { jsPDF } = window.jspdf;
+    const format = cfg.pageSize === "a4" ? "a4" : "letter";
+    const doc = new jsPDF({ unit: "pt", format });
+
+    const pageW = doc.internal.pageSize.getWidth();
+    const pageH = doc.internal.pageSize.getHeight();
+    const margin = 36; // 0.5in
+    const gutter = 8.64; // 0.12in
+    const usableW = pageW - 2 * margin;
+    const usableH = pageH - 2 * margin;
+    const cellW = usableW / cfg.gridCols;
+    const cellH = usableH / cfg.gridRows;
+    const rectW = cellW - gutter;
+    const rectH = cellH - gutter;
+
+    function setDashed() {
+      try { doc.setLineDashPattern([2, 2], 0); } catch (e) {}
+    }
+    function setSolid() {
+      try { doc.setLineDashPattern([], 0); } catch (e) {}
+    }
+
+    function drawHeader(left, right) {
+      setSolid();
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(8);
+      doc.setTextColor(102, 102, 102);
+      doc.text(left, margin, margin - 10);
+      doc.text(right, pageW - margin, margin - 10, { align: "right" });
+    }
+
+    function rectXY(row, col) {
+      const x = margin + col * cellW + gutter / 2;
+      const y = margin + row * cellH + gutter / 2; // jsPDF y grows downward already
+      return [x, y];
+    }
+
+    doc.setDrawColor(153, 153, 153);
+    doc.setLineWidth(0.75);
+
+    for (let page = 1; page <= cfg.numPages; page++) {
+      // ---- front ----
+      setDashed();
+      doc.setDrawColor(153, 153, 153);
+      doc.setLineWidth(0.75);
+
+      const front = buildPageGrid(page, cfg);
+      front.forEach((c) => {
+        if (c.item === null) return;
+        const [x, y] = rectXY(c.row, c.col);
+        doc.rect(x, y, rectW, rectH);
+        doc.setTextColor(20, 20, 20);
+        if (cfg.placement === "same_card" && cfg.words) {
+          doc.setFont("helvetica", "bold");
+          doc.setFontSize(28);
+          doc.text(String(c.item), x + rectW / 2, y + rectH / 2 - 4, { align: "center" });
+          doc.setFont("helvetica", "normal");
+          doc.setFontSize(12);
+          doc.text(cfg.words[c.item - 1] || "", x + rectW / 2, y + rectH / 2 + 16, { align: "center", maxWidth: rectW - 10 });
+        } else {
+          doc.setFont("helvetica", "bold");
+          doc.setFontSize(28);
+          doc.text(String(c.item), x + rectW / 2, y + rectH / 2 + 9, { align: "center" });
+        }
+      });
+      drawHeader(`Page ${page} of ${cfg.numPages}`, `${cfg.totalItems} items | ${cfg.rectsPerPage}/page`);
+
+      const isLastContentPage = page === cfg.numPages && cfg.placement !== "back";
+      if (!isLastContentPage) doc.addPage(format);
+
+      // ---- matching back ----
+      if (cfg.placement === "back") {
+        setDashed();
+        doc.setDrawColor(153, 153, 153);
+        doc.setLineWidth(0.75);
+
+        const back = buildBackGrid(page, cfg);
+        back.forEach((c) => {
+          const [x, y] = rectXY(c.row, c.col);
+          doc.rect(x, y, rectW, rectH);
+          doc.setTextColor(20, 20, 20);
+          doc.setFont("helvetica", "normal");
+          doc.setFontSize(16);
+          doc.text(cfg.words[c.item - 1] || "", x + rectW / 2, y + rectH / 2 + 5, { align: "center", maxWidth: rectW - 10 });
+        });
+        drawHeader(`Page ${page} back`, `flip: ${cfg.backFlipEdge} edge`);
+
+        const isLast = page === cfg.numPages;
+        if (!isLast) doc.addPage(format);
+      }
+    }
+
+    doc.save("cut_and_stack_cards.pdf");
+  }
+
+  form.addEventListener("submit", (e) => {
+    e.preventDefault();
+    const cfg = updateUI();
+    statusEl.className = "status";
+    statusEl.textContent = "";
+
+    if (cfg.errors.length > 0) {
+      statusEl.className = "status error";
+      statusEl.textContent = cfg.errors[0];
+      return;
+    }
+    if (cfg.totalItems > 5000) {
+      statusEl.className = "status error";
+      statusEl.textContent = "That's a lot of items — try under 5000 at a time.";
+      return;
+    }
+
+    generateBtn.disabled = true;
+    statusEl.textContent = "Building PDF…";
+    // let the UI paint the status before the (synchronous) PDF build
+    setTimeout(() => {
+      try {
+        buildPdf(cfg);
+        statusEl.className = "status ok";
+        statusEl.textContent = `Done — downloaded ${cfg.numPages} page${cfg.numPages === 1 ? "" : "s"}${cfg.placement === "back" ? " × 2 (front/back)" : ""}.`;
+      } catch (err) {
+        statusEl.className = "status error";
+        statusEl.textContent = "Something went wrong generating the PDF: " + err.message;
+        console.error(err);
+      } finally {
+        generateBtn.disabled = false;
+      }
+    }, 10);
+  });
+
+  updateUI();
+})();
+</script>
+</body>
+</html>
