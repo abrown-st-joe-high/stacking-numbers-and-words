@@ -317,6 +317,24 @@
           </div>
         </div>
         <p class="hint" id="gridHint">Columns × rows must equal rectangles per page.</p>
+
+        <div class="radio-group" role="radiogroup" aria-label="Cutting order" style="margin-top:14px;">
+          <label class="radio-card">
+            <input type="radio" name="orderDirection" value="row_wise" checked />
+            <span>
+              <span class="t">Cut rows first</span>
+              <span class="d">Numbering runs left-to-right, then down. Slice horizontal strips first, then cut each strip into columns.</span>
+            </span>
+          </label>
+          <label class="radio-card">
+            <input type="radio" name="orderDirection" value="column_wise" />
+            <span>
+              <span class="t">Cut columns first</span>
+              <span class="d">Numbering runs top-to-bottom, then across. Slice vertical strips first, then cut each strip into rows.</span>
+            </span>
+          </label>
+        </div>
+
         <div class="field" style="margin-top:14px;">
           <label for="pageSize">Page size</label>
           <select id="pageSize">
@@ -410,6 +428,26 @@
     return document.querySelector('input[name="placement"]:checked').value;
   }
 
+  function getOrderDirection() {
+    return document.querySelector('input[name="orderDirection"]:checked').value;
+  }
+
+  // Mirrors _slot_positions() in generate_cut_cards.py — returns a list of
+  // [row, col] pairs, index 0 = slot 1, in the chosen traversal order.
+  function slotPositions(gridRows, gridCols, orderDirection) {
+    const positions = [];
+    if (orderDirection === "column_wise") {
+      for (let col = 0; col < gridCols; col++) {
+        for (let row = 0; row < gridRows; row++) positions.push([row, col]);
+      }
+    } else {
+      for (let row = 0; row < gridRows; row++) {
+        for (let col = 0; col < gridCols; col++) positions.push([row, col]);
+      }
+    }
+    return positions;
+  }
+
   function parseWords(totalItems) {
     const raw = wordsTextEl.value;
     const lines = raw.split("\n").map((l) => l.trim()).filter((l) => l !== "");
@@ -431,6 +469,7 @@
     const gridCols = parseInt(gridColsEl.value, 10);
     const gridRows = parseInt(gridRowsEl.value, 10);
     const placement = getPlacement();
+    const orderDirection = getOrderDirection();
     const backFlipEdge = backFlipEdgeEl.value;
     const pageSize = pageSizeEl.value;
 
@@ -454,7 +493,7 @@
     const numPages = errors.length === 0 ? Math.ceil(totalItems / rectsPerPage) : 0;
 
     return { totalItems, rectsPerPage, gridCols, gridRows, placement: effectivePlacement,
-             requestedPlacement: placement, backFlipEdge, pageSize, words, numPages, errors };
+             requestedPlacement: placement, orderDirection, backFlipEdge, pageSize, words, numPages, errors };
   }
 
   function itemNumberFor(slot, page, numPages) {
@@ -462,31 +501,27 @@
   }
 
   function buildPageGrid(page, cfg) {
-    // returns { cells: [{row,col,item}], } for the front of `page`
+    // returns [{row,col,slot,item}] for the front of `page`
     const cells = [];
-    let slot = 0;
-    for (let row = 0; row < cfg.gridRows; row++) {
-      for (let col = 0; col < cfg.gridCols; col++) {
-        slot++;
-        const item = itemNumberFor(slot, page, cfg.numPages);
-        cells.push({ row, col, slot, item: item <= cfg.totalItems ? item : null });
-      }
-    }
+    const positions = slotPositions(cfg.gridRows, cfg.gridCols, cfg.orderDirection);
+    positions.forEach(([row, col], idx) => {
+      const slot = idx + 1;
+      const item = itemNumberFor(slot, page, cfg.numPages);
+      cells.push({ row, col, slot, item: item <= cfg.totalItems ? item : null });
+    });
     return cells;
   }
 
   function buildBackGrid(page, cfg) {
     const cells = [];
-    let slot = 0;
-    for (let row = 0; row < cfg.gridRows; row++) {
-      for (let col = 0; col < cfg.gridCols; col++) {
-        slot++;
-        const item = itemNumberFor(slot, page, cfg.numPages);
-        if (item > cfg.totalItems) continue;
-        const [mrow, mcol] = mirrorSlot(row, col, cfg.gridRows, cfg.gridCols, cfg.backFlipEdge);
-        cells.push({ row: mrow, col: mcol, item });
-      }
-    }
+    const positions = slotPositions(cfg.gridRows, cfg.gridCols, cfg.orderDirection);
+    positions.forEach(([row, col], idx) => {
+      const slot = idx + 1;
+      const item = itemNumberFor(slot, page, cfg.numPages);
+      if (item > cfg.totalItems) return;
+      const [mrow, mcol] = mirrorSlot(row, col, cfg.gridRows, cfg.gridCols, cfg.backFlipEdge);
+      cells.push({ row: mrow, col: mcol, item });
+    });
     return cells;
   }
 
@@ -559,9 +594,10 @@
     if (cfg.requestedPlacement !== "numbers_only" && !cfg.words) {
       note = " (no word list entered, so cards will just be numbered)";
     }
+    const orderLabel = cfg.orderDirection === "column_wise" ? "columns first" : "rows first";
     summaryEl.innerHTML =
       `<b>${cfg.numPages}</b> page${cfg.numPages === 1 ? "" : "s"} needed for <b>${cfg.totalItems}</b> items ` +
-      `at <b>${cfg.rectsPerPage}</b> per page (${cfg.gridCols}×${cfg.gridRows} grid). ` +
+      `at <b>${cfg.rectsPerPage}</b> per page (${cfg.gridCols}×${cfg.gridRows} grid, cutting ${orderLabel}). ` +
       `PDF will contain <b>${sides}</b> printable page${sides === 1 ? "" : "s"}${cfg.placement === "back" ? " (fronts + backs)" : ""}.${note}`;
   }
 
@@ -601,6 +637,9 @@
     elm.addEventListener("input", updateUI)
   );
   document.querySelectorAll('input[name="placement"]').forEach((r) =>
+    r.addEventListener("change", updateUI)
+  );
+  document.querySelectorAll('input[name="orderDirection"]').forEach((r) =>
     r.addEventListener("change", updateUI)
   );
 
@@ -670,7 +709,7 @@
           doc.text(String(c.item), x + rectW / 2, y + rectH / 2 + 9, { align: "center" });
         }
       });
-      drawHeader(`Page ${page} of ${cfg.numPages}`, `${cfg.totalItems} items | ${cfg.rectsPerPage}/page`);
+      drawHeader(`Page ${page} of ${cfg.numPages}`, `${cfg.totalItems} items | ${cfg.rectsPerPage}/page | ${cfg.orderDirection.replace("_", "-")}`);
 
       const isLastContentPage = page === cfg.numPages && cfg.placement !== "back";
       if (!isLastContentPage) doc.addPage(format);
